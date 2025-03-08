@@ -1,0 +1,84 @@
+:local addressList "ssh_stage3"
+:global newlist "_black0_sc"
+:local ipAddr ""
+:local orgList ""
+:local i 0
+:global n 0
+:global er 0
+:global count  0
+:global totalRecords 0
+:local ipcontent ""
+:global bigTime ""
+:global endTime ""
+:global status ""
+:global status1 ""
+:global status2 ""
+:global status3 ""
+:global status4 ""
+:local jsonData ""
+#-------------------------------------------основной скрипт-------------------------------------------------------------------------
+:set $bigTime ([/system clock get date] . " " . [/system clock get time])
+:set $status "Script запущен"
+#:set $ipcontent  ( $ipcontent . "------------------------------ " . $bigTime . "  --------------------------------- "  . " \n");
+# Размер пакета (количество записей в одном JSON-запросе)
+:local batchSize 100
+# Получаем все записи
+:local allRecords [/ip firewall address-list find list=$addressList]  
+# Общее количество записей
+:set totalRecords [:len $allRecords]  
+# Текущий индекс для итерации
+:global currentIndex 0  
+
+:set status3 "Всего записей: $totalRecords"
+
+# Цикл для обработки записей пакетами
+:while ($currentIndex < $totalRecords) do={
+# Начинаем формировать JSON-массив для текущего пакета
+         :set $jsonData "{ \"param1\": [ "  
+         :local endIndex ($currentIndex + $batchSize - 1)
+    
+# Ограничиваем endIndex, чтобы не выйти за пределы массива
+        :if ($endIndex >= $totalRecords) do={
+                :set endIndex ($totalRecords - 1)
+            }
+    
+# Формируем JSON для текущего пакета
+        :for i from=$currentIndex to=$endIndex do={
+                :local id [:pick $allRecords $i]
+                :local listName [/ip firewall address-list get $id list]
+                :local address [/ip firewall address-list get $id address]
+                :local CrTime [/ip firewall address-list get $id creation-time]
+                :local idx $id
+        
+                :local jsonEntry "{\"param1\":\"$listName\",\"param2\":\"$address\",\"param3\":\"$CrTime\",\"param4\":\"$idx\"}"
+        
+                :if ($jsonData != "{ \"param1\": [ ") do={
+                        :set $jsonData "$jsonData,"
+#                        :set jsonData "$jsonData"
+                    }
+                :set $jsonData "$jsonData$jsonEntry"
+            }
+# Завершаем JSON-массив
+        :set $jsonData "$jsonData ], \"param2\": \" \" }"  
+    
+# Логируем JSON для проверки
+#        :log info "Отправляемый JSON (записи $currentIndex-$endIndex): $jsonData"
+    
+# Отправляем JSON на сервер
+    /tool fetch url="http://88.205.240.85:18801/api/v1/blm/mjson/" http-method=post http-data=$jsonData http-header-field="Content-Type: application/json"
+    
+    :set $status1 "Отправлен пакет записей $currentIndex-$endIndex"
+    
+# Увеличиваем индекс для следующего пакета
+    :set currentIndex ($currentIndex + $batchSize)
+    
+# Пауза между запросами (опционально, чтобы не перегружать сервер)
+#    :delay 1s
+}
+
+:set status2 "Все записи успешно отправлены."
+
+            :set $endTime ([/system clock get date] . " " . [/system clock get time])  
+
+#--------------------------------   конец обработки   ----------------------------------------------------    
+:set status4 "Скрипт завершен"
