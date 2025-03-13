@@ -1,0 +1,97 @@
+:local filename "Export_2025-03-12_09-03.txt"
+:local subnets {1}
+:local addressList "ssh_stage3"
+:local newlist "_black0_sc"
+:global status ""
+:global status1 ""
+:global status2 ""
+:global status3 ""
+:global bigTime ""
+:global endTime ""
+:global divnet ""
+:local ipcontent ""
+:global count  0
+:local pos 0
+:global i 0
+:global ii 0
+:global m 0
+:global subnetStr ""
+local subnet ""
+local ipAddr ""
+
+#--------------------------------------------основной скрипт-----------------------------------------------------------------------
+:set $bigTime ([/system clock get date] . " " . [/system clock get time])
+:set $status "Script запущен"
+:set $ipcontent  ( $ipcontent . "------------------------------ " . $bigTime . "  --------------------------------- "  . " \n");
+#----------------------------------------------------------------------------------------------------------------------------------
+
+# Чтение содержимого файла
+:local content [/file get $filename contents]
+:local len [:len $content]
+
+#--------------------------------------- Цикл формирования массива подсетей -------------------------------------------------------
+:while ([:len $content] > 0) do={
+    :set pos [:find $content "\n"]
+    
+    :if ($pos != nil) do={
+# Сохраняем строку в массив
+        :set $count ($count + 1)
+        :set ($subnets->$count) [:pick $content 0 ($pos-1)]
+        :set content [:pick $content ($pos + 1) [:len $content]]
+        
+    } else={
+# Последняя строка
+        :set $count ($count + 1)
+        :set ($subnets->$count) $content
+        :set content ""
+    }
+}
+#-----------------------------------------------------------------------------------------------------------------------------------
+# Получаем список IP-адресов из заданного address-list
+ :set $status1 ( " Вычитываем address-list = $$addressList " )
+ :local ipList [/ip firewall address-list find list=$addressList]   
+    
+     :for i from=1 to=$count do={
+        :local n 0
+        :set $m 0
+        :set $divnet ($subnets->$i)
+#        :local k [ :len $divnet ]
+
+        :set $status1 ( " Обрабатываем подсеть $divnet строка $i " )
+#       ----------------- Записываем подсеть в   "_black0_sc" --------------     
+        :do {
+               /ip firewall address-list add address=$divnet list=$newlist                                                                               
+               :set $status2 ( " Записали сетку $divnet в address-list  $newlist " )
+            } on-error {
+               :set $status3 ( " Данная подсеть уже существует - $divnet")
+               :delay 3s
+            }          
+#       --------------------------------------------------------------------
+        :foreach ip in=$ipList do={
+            :set $m ($m + 1)
+            :set $ipAddr [/ip firewall address-list get $ip address]
+            :if ($ipAddr in $divnet) do={
+#                    /ip firewall address-list remove [find where address=$ipAddr]
+                    /ip firewall address-list remove $ip
+                    :set $ii ($ii + 1)
+                    :set $n ($n + 1)
+                    :set $status3 ( " Удалили адрес: $ipAddr , - $n в подсети; Всего: $ii ")
+                }
+           }     
+      }
+#-----------------------------------------------------------------------------------------------------------------------------------
+# Вывод массива в лог
+:for i from=1 to=($count) do={
+    :if ([:typeof ($subnets->$i)] != "nothing") do={
+        :log info "Line $i: $($subnets->$i)"
+    }
+}
+
+#-----------------------------------------------------------------------------------------------------------------------------------
+:set $endTime ([/system clock get date] . " " . [/system clock get time])  
+:set $ipcontent  ( $ipcontent . "------------------------------ " . $endTime . "  --------------------------------- "  . " \n");
+:set $status "Script завершен"
+#--------------------------------------------------   конец обработки   ------------------------------------------------------------    
+
+
+
